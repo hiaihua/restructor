@@ -10,3 +10,11 @@
 *.lai
 *.la
 *.a
+
+
+local.properties
+libs
+bin
+!bin/data
+obj
+gen
