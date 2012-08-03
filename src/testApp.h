@@ -3,7 +3,7 @@
 
 
 #include "ofMain.h"
-#include "ofxOpenCv.h"
+#include "ofxCv.h"
 
 class testApp : public ofBaseApp{
 	
@@ -21,17 +21,9 @@ class testApp : public ofBaseApp{
 		void mouseReleased(int x, int y, int button);
 		void windowResized(int w, int h);
 
-
-		ofVideoGrabber grabber;
-		ofxCvGrayscaleImage gray, bg;//, diff;
-		ofxCvContourFinder contourFinder;
-
-		bool captureBg;
-
-		int one_second_time;
-		int camera_fps;
-		int frames_one_sec;
-
+		ofVideoGrabber cam;
+		ofImage undistorted;
+		ofxCv::Calibration calibration;
 };
 
 #endif	
