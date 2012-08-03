@@ -5,6 +5,7 @@
 
 using namespace ofxCv;
 using namespace cv;
+using namespace std;
 
 //--------------------------------------------------------------
 void testApp::setup(){
@@ -24,14 +25,30 @@ void testApp::setup(){
 void testApp::update(){
 	cam.update();
 	if (cam.isFrameNew()) {
+
 		calibration.undistort(toCv(cam), toCv(undistorted));
 		undistorted.update();
+
+		const Mat& mat = toCv(undistorted);
+		//Mat mat2(mat, )
+		Mat gray;
+		cvtColor(mat, gray, CV_BGR2GRAY);
+		cv::goodFeaturesToTrack(gray, corners, 500, 0.01, 5);
+
+
 	}
 }
 
 //--------------------------------------------------------------
 void testApp::draw(){
 	undistorted.draw(0, 0);
+
+	ofPushStyle();
+	ofNoFill();
+	for (int i = 0; i < corners.size(); i++) {
+		ofRect(corners[i].x, corners[i].y, 2, 2);
+	}
+	ofPopStyle();
 }
 
 //--------------------------------------------------------------
