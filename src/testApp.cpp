@@ -10,7 +10,7 @@ using namespace std;
 //--------------------------------------------------------------
 void testApp::setup(){
 	ofSetVerticalSync(true);
-	cam.initGrabber(320, 240);
+	cam.initGrabber(640, 480);
 
 	ofSetLogLevel(OF_LOG_NOTICE);
 	//ofSetOrientation(OF_ORIENTATION_90_LEFT);
@@ -34,7 +34,9 @@ void testApp::update(){
 
 //--------------------------------------------------------------
 void testApp::draw(){
-	undistorted.draw(0, 0);
+	ofScale(0.5, 0.5, 1);
+	cam.draw(0, 0);
+	undistorted.draw(cam.getWidth() + 5, 0);
 
 	int currentX = 0;
 
