@@ -10,7 +10,7 @@ using namespace std;
 //--------------------------------------------------------------
 void testApp::setup(){
 	ofSetVerticalSync(true);
-	cam.initGrabber(480, 360);
+	cam.initGrabber(320, 240);
 
 	ofSetLogLevel(OF_LOG_NOTICE);
 	//ofSetOrientation(OF_ORIENTATION_90_LEFT);
