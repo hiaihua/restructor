@@ -10,7 +10,7 @@ using namespace std;
 //--------------------------------------------------------------
 void testApp::setup(){
 	ofSetVerticalSync(true);
-	cam.initGrabber(640, 480);
+	cam.initGrabber(480, 360);
 
 	ofSetLogLevel(OF_LOG_NOTICE);
 	//ofSetOrientation(OF_ORIENTATION_90_LEFT);
@@ -29,13 +29,6 @@ void testApp::update(){
 		calibration.undistort(toCv(cam), toCv(undistorted));
 		undistorted.update();
 
-		const Mat& mat = toCv(undistorted);
-		//Mat mat2(mat, )
-		Mat gray;
-		cvtColor(mat, gray, CV_BGR2GRAY);
-		cv::goodFeaturesToTrack(gray, corners, 500, 0.01, 5);
-
-
 	}
 }
 
@@ -43,17 +36,23 @@ void testApp::update(){
 void testApp::draw(){
 	undistorted.draw(0, 0);
 
-	ofPushStyle();
-	ofNoFill();
-	for (int i = 0; i < corners.size(); i++) {
-		ofRect(corners[i].x, corners[i].y, 2, 2);
+	int currentX = 0;
+
+	for (int i = 0; i < images.size(); i++) {
+		ofImage& image = images[i];
+		image.draw(currentX, undistorted.getHeight() + 5);
+		currentX += image.getWidth() + 5;
 	}
-	ofPopStyle();
 }
 
 //--------------------------------------------------------------
-void testApp::keyPressed  (int key){ 
-	
+void testApp::keyPressed  (int key){
+	if (images.size() >= 2) {
+		return;
+	}
+	ofImage image;
+	image.clone(undistorted);
+	images.push_back(image);
 }
 
 //--------------------------------------------------------------

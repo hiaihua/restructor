@@ -23,8 +23,11 @@ class testApp : public ofBaseApp{
 
 		ofVideoGrabber cam;
 		ofImage undistorted;
+		ofImage prevUndistorted;
 		std::vector<cv::Point> corners;
 		ofxCv::Calibration calibration;
+
+		std::vector<ofImage> images;
 };
 
 #endif	
