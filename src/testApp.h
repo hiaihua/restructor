@@ -24,12 +24,15 @@ class testApp : public ofBaseApp{
 		ofVideoGrabber cam;
 		ofImage undistorted;
 		ofImage prevUndistorted;
-		std::vector<cv::Point> corners;
 		ofxCv::Calibration calibration;
 
 		std::vector<ofImage> images;
+		std::vector<ofImage> grayImages;
 		ofPtr<ofxCv::Flow> flow;
 
+		cv::Mat fundamentalMatrix;
+		ofImage disparity;
+		cv::StereoBM stereoBM;
 	private:
 		ofPtr<ofxCv::Flow> initializePyrLK();
 		ofPtr<ofxCv::Flow> initializeFarneback();

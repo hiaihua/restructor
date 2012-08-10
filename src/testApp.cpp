@@ -20,7 +20,7 @@ void testApp::setup(){
 	calibration.load("calibration.yml");
 	imitate(undistorted, cam);
 
-	flow = initializePyrLK();
+	flow = initializeFarneback();
 
 }
 
@@ -74,11 +74,12 @@ void testApp::draw(){
 		image.draw(currentX, undistorted.getHeight() + 5);
 
 		if (i == 1) {
-			flow->draw(currentX, undistorted.getHeight() + 5);
+			//flow->draw(currentX, undistorted.getHeight() + 5);
 		}
 
 		currentX += image.getWidth() + 5;
 	}
+	disparity.draw((undistorted.getHeight() + 5) * 2, 0);
 }
 
 //--------------------------------------------------------------
@@ -90,9 +91,25 @@ void testApp::keyPressed  (int key){
 	image.clone(undistorted);
 	images.push_back(image);
 
+	ofImage gray;
+	gray.clone(undistorted);
+	gray.setImageType(OF_IMAGE_GRAYSCALE);
+	grayImages.push_back(gray);
+
 
 	flow->calcOpticalFlow(image);
 
+	if (images.size() == 2) {
+		std::vector<cv::Point2f> points1 = flow->getPointsPrev();
+		std::vector<cv::Point2f> points2 = flow->getPointsNext();
+
+
+		cv::findFundamentalMat(points1, points2, fundamentalMatrix);
+
+		disparity.clone(grayImages[0]);
+		//cv::computeCorrespondEpilines(points1, 1, fundamentalMatrix, epilines);
+		stereoBM(toCv(grayImages[0]), toCv(grayImages[1]), toCv(disparity));
+	}
 }
 
 //--------------------------------------------------------------
