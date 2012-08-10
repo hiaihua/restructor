@@ -28,6 +28,11 @@ class testApp : public ofBaseApp{
 		ofxCv::Calibration calibration;
 
 		std::vector<ofImage> images;
+		ofPtr<ofxCv::Flow> flow;
+
+	private:
+		ofPtr<ofxCv::Flow> initializePyrLK();
+		ofPtr<ofxCv::Flow> initializeFarneback();
 };
 
 #endif	

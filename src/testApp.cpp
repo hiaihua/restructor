@@ -19,6 +19,36 @@ void testApp::setup(){
 	calibration.setFillFrame(true);
 	calibration.load("calibration.yml");
 	imitate(undistorted, cam);
+
+	flow = initializePyrLK();
+
+}
+
+ofPtr<ofxCv::Flow> testApp::initializePyrLK() {
+	ofxCv::FlowPyrLK* flow = new ofxCv::FlowPyrLK();
+
+	flow->setMaxFeatures(200);
+	flow->setQualityLevel(0.01);
+	flow->setMinDistance(4);
+	flow->setWindowSize(32);
+	flow->setMaxLevel(3);
+
+	return ofPtr<ofxCv::Flow>(flow);
+}
+
+ofPtr<ofxCv::Flow> testApp::initializeFarneback() {
+	ofxCv::FlowFarneback* flow = new ofxCv::FlowFarneback();
+
+	flow->setPyramidScale(0.5);
+	flow->setNumLevels(4);
+	flow->setWindowSize(8);
+	flow->setNumIterations(2);
+
+	flow->setPolyN(7);
+	flow->setPolySigma(1.5);
+	flow->setUseGaussian(false);
+
+	return ofPtr<ofxCv::Flow>(flow);
 }
 
 //--------------------------------------------------------------
@@ -28,7 +58,6 @@ void testApp::update(){
 
 		calibration.undistort(toCv(cam), toCv(undistorted));
 		undistorted.update();
-
 	}
 }
 
@@ -43,6 +72,11 @@ void testApp::draw(){
 	for (int i = 0; i < images.size(); i++) {
 		ofImage& image = images[i];
 		image.draw(currentX, undistorted.getHeight() + 5);
+
+		if (i == 1) {
+			flow->draw(currentX, undistorted.getHeight() + 5);
+		}
+
 		currentX += image.getWidth() + 5;
 	}
 }
@@ -55,6 +89,10 @@ void testApp::keyPressed  (int key){
 	ofImage image;
 	image.clone(undistorted);
 	images.push_back(image);
+
+
+	flow->calcOpticalFlow(image);
+
 }
 
 //--------------------------------------------------------------
