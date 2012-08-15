@@ -22,6 +22,12 @@ void testApp::setup(){
 
 	flow = initializeFarneback();
 
+
+	mesh.setMode(OF_PRIMITIVE_POINTS);
+
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_POINT_SMOOTH);
+	glPointSize(3);
 }
 
 ofPtr<ofxCv::Flow> testApp::initializePyrLK() {
@@ -63,15 +69,21 @@ void testApp::update(){
 
 //--------------------------------------------------------------
 void testApp::draw(){
-	ofScale(0.5, 0.5, 1);
-	cam.draw(0, 0);
-	undistorted.draw(cam.getWidth() + 5, 0);
+	easycam.begin();
+	ofScale(0.5, -0.5, 0.5);
+	//ofRotateY(90);
+	ofTranslate(-300, -300);
+	//cam.draw(0, 0);
+	//undistorted.draw(cam.getWidth() + 5, 0);
 
 	int currentX = 0;
 
 	for (int i = 0; i < images.size(); i++) {
 		ofImage& image = images[i];
 		image.draw(currentX, undistorted.getHeight() + 5);
+		if (images.size() - 2 == i) {
+			flow->draw(currentX, undistorted.getHeight() + 5);
+		}
 
 		if (i == 1) {
 			//flow->draw(currentX, undistorted.getHeight() + 5);
@@ -79,7 +91,10 @@ void testApp::draw(){
 
 		currentX += image.getWidth() + 5;
 	}
-	disparity.draw((undistorted.getWidth() + 5) * 2, 0);
+
+	//ofBackgroundGradient(ofColor::gray, ofColor::black, OF_GRADIENT_CIRCULAR);
+	mesh.draw();
+	easycam.end();
 }
 
 std::vector<KeyPoint> testApp::convertFrom(const std::vector<Point2f>& points) {
@@ -96,11 +111,26 @@ std::vector<KeyPoint> testApp::convertFrom(const std::vector<Point2f>& points) {
 
 //--------------------------------------------------------------
 void testApp::keyPressed  (int key){
-	if (images.size() >= 2) {
+	if (images.size() >= 4) {
 		return;
 	}
 	ofImage image;
-	image.clone(undistorted);
+	//image.clone(undistorted);
+	if (images.size() == 0) {
+		image.loadImage("img/100_4741_small.jpg");
+	}
+	else if (images.size() == 1)
+	{
+		image.loadImage("img/100_4742_small.jpg");
+	}
+	else if (images.size() == 2)
+	{
+		image.loadImage("img/100_4743_small.jpg");
+	}
+	else
+	{
+		image.loadImage("img/100_4744_small.jpg");
+	}
 	images.push_back(image);
 
 	ofImage gray;
@@ -111,13 +141,15 @@ void testApp::keyPressed  (int key){
 
 	flow->calcOpticalFlow(image);
 
-	if (images.size() == 2) {
+	if (images.size() >= 2) {
 		std::vector<cv::Point2f> points1 = flow->getPointsPrev();
 		std::vector<cv::Point2f> points2 = flow->getPointsNext();
 
 		std::vector<cv::KeyPoint> keyPoints1 = convertFrom(points1);
 		std::vector<cv::KeyPoint> keyPoints2 = convertFrom(points2);
 
+		std::cout << "points1: " << points1.size() << std::endl;
+		std::cout << "points2: " << points2.size() << std::endl;
 
 
 		fundamentalMatrix = cv::findFundamentalMat(points1, points2, FM_RANSAC, 0.1, 0.99);
@@ -141,10 +173,32 @@ void testApp::keyPressed  (int key){
 		cv::Matx34d P(1,0,0,0,
 					  0,1,0,0,
 					  0,0,1,0);
+		vector<Point3d> pointcloud;
 		TriangulatePoints(keyPoints1, keyPoints2, cameraMatrixInv,
 				calibration.getDistCoeffs(), P, P1, pointcloud,
 				   correspImg1Pt);
 
+		std::cout << "Pointcloud: " << pointcloud.size() << std::endl;
+		ofColor color;
+		if (images.size() == 2) {
+			color = ofColor::red;
+		}
+		else if (images.size() == 3) {
+			color = ofColor::green;
+		}
+		else
+		{
+			color = ofColor::blue;
+		}
+		const ofImage& image = images[images.size() - 2];
+		for (int i = 0; i < pointcloud.size(); i++) {
+
+			const Point2f& point = points1[i];
+			mesh.addColor(image.getColor(point.x, point.y));
+			const Point3d& point3d = pointcloud[i];
+			ofVec3f vec(point3d.x, point3d.y, point3d.z);
+			mesh.addVertex(vec);
+		}
 	}
 }
 

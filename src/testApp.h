@@ -36,7 +36,8 @@ class testApp : public ofBaseApp{
 	private:
 		ofPtr<ofxCv::Flow> initializePyrLK();
 		ofPtr<ofxCv::Flow> initializeFarneback();
-		std::vector<cv::Point3d> pointcloud;
+		ofMesh mesh;
+		ofEasyCam easycam;
 		std::vector<cv::KeyPoint> correspImg1Pt;
 
 		std::vector<cv::KeyPoint> convertFrom(const std::vector<cv::Point2f>& points);
