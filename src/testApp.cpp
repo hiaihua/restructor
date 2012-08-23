@@ -7,6 +7,8 @@ using namespace ofxCv;
 using namespace cv;
 using namespace std;
 
+#define TEST
+
 //--------------------------------------------------------------
 void testApp::setup(){
 	ofSetVerticalSync(true);
@@ -20,14 +22,17 @@ void testApp::setup(){
 	calibration.load("calibration.yml");
 	imitate(undistorted, cam);
 
-	flow = initializeFarneback();
+	//flow = initializeFarneback();
+	flow = initializePyrLK();
 
 
 	mesh.setMode(OF_PRIMITIVE_POINTS);
 
-	glEnable(GL_DEPTH_TEST);
+	//glEnable(GL_DEPTH_TEST);
 	glEnable(GL_POINT_SMOOTH);
 	glPointSize(3);
+
+	easycam.setDistance(300);
 }
 
 ofPtr<ofxCv::Flow> testApp::initializePyrLK() {
@@ -70,30 +75,35 @@ void testApp::update(){
 //--------------------------------------------------------------
 void testApp::draw(){
 	easycam.begin();
-	ofScale(0.5, -0.5, 0.5);
+	ofRect(0, 0, 3, 3);
+	ofScale(0.1, 0.1, 0.1);
 	//ofRotateY(90);
-	ofTranslate(-300, -300);
+	//ofTranslate(300, 300);
 	//cam.draw(0, 0);
 	//undistorted.draw(cam.getWidth() + 5, 0);
 
 	int currentX = 0;
 
 	for (int i = 0; i < images.size(); i++) {
+		glPushMatrix();
+		if (i >= 1) {
+			//easycam.setTransformMatrix(ofRs[i - 1]);
+		}
 		ofImage& image = images[i];
-		image.draw(currentX, undistorted.getHeight() + 5);
-		if (images.size() - 2 == i) {
-			flow->draw(currentX, undistorted.getHeight() + 5);
-		}
-
-		if (i == 1) {
-			//flow->draw(currentX, undistorted.getHeight() + 5);
-		}
+		image.draw(currentX, 0);
 
 		currentX += image.getWidth() + 5;
+		glPopMatrix();
+	}
+	if (images.size() >= 2) {
+		glPushMatrix();
+		//easycam.setTransformMatrix(ofRs[images.size() - 2]);
+		//glMultMatrixf(ofRs[images.size() - 2].getPtr());
+		flow->draw(currentX - (undistorted.getWidth() + 5) * 2, 0, undistorted.getWidth(), undistorted.getHeight());//, undistorted.getWidth() + 5, 0);
+		glPopMatrix();
 	}
 
 	//ofBackgroundGradient(ofColor::gray, ofColor::black, OF_GRADIENT_CIRCULAR);
-	mesh.draw();
 	easycam.end();
 }
 
@@ -114,23 +124,32 @@ void testApp::keyPressed  (int key){
 	if (images.size() >= 4) {
 		return;
 	}
+
+	if (key == 'm') {
+		return;
+	}
+
 	ofImage image;
-	//image.clone(undistorted);
+#ifndef TEST
+	image.clone(undistorted);
+#else
 	if (images.size() == 0) {
-		image.loadImage("img/100_4741_small.jpg");
+		image.loadImage("img/100_4741.jpg");
 	}
 	else if (images.size() == 1)
 	{
-		image.loadImage("img/100_4742_small.jpg");
+		image.loadImage("img/100_4742.jpg");
 	}
 	else if (images.size() == 2)
 	{
-		image.loadImage("img/100_4743_small.jpg");
+		image.loadImage("img/100_4743.jpg");
 	}
 	else
 	{
-		image.loadImage("img/100_4744_small.jpg");
+		image.loadImage("img/100_4744.jpg");
 	}
+	undistorted.clone(image);
+#endif
 	images.push_back(image);
 
 	ofImage gray;
@@ -142,8 +161,14 @@ void testApp::keyPressed  (int key){
 	flow->calcOpticalFlow(image);
 
 	if (images.size() >= 2) {
+		const ofImage& image1 = images[images.size() - 2];
+		const ofImage& image2 = images[images.size() - 1];
+
 		std::vector<cv::Point2f> points1 = flow->getPointsPrev();
 		std::vector<cv::Point2f> points2 = flow->getPointsNext();
+
+		//points1.resize(400);
+		//points2.resize(400);
 
 		std::vector<cv::KeyPoint> keyPoints1 = convertFrom(points1);
 		std::vector<cv::KeyPoint> keyPoints2 = convertFrom(points2);
@@ -152,32 +177,73 @@ void testApp::keyPressed  (int key){
 		std::cout << "points2: " << points2.size() << std::endl;
 
 
-		fundamentalMatrix = cv::findFundamentalMat(points1, points2, FM_RANSAC, 0.1, 0.99);
-		cv::Mat cameraMatrix = calibration.getDistortedIntrinsics().getCameraMatrix();
+		fundamentalMatrix = (cv::Mat)cv::findFundamentalMat(points1, points2);
+		cv::Mat cameraMatrix = (cv::Mat)calibration.getDistortedIntrinsics().getCameraMatrix();
 		cv::Mat cameraMatrixInv = cameraMatrix.inv();
-		essentialMatrix = cameraMatrix.t() * fundamentalMatrix * cameraMatrix;
+		std::cout << "fund: " << fundamentalMatrix << std::endl;
+		//std::cout << "point1: " << points1[5] << std::endl;
+		//std::cout << "point2: " << points2[5] << std::endl;
 
+#ifdef TEST
+		essentialMatrix = fundamentalMatrix;
+#else
+		essentialMatrix = cameraMatrix.t() * fundamentalMatrix * cameraMatrix;
+#endif
 		cv::SVD svd(essentialMatrix);
 		Matx33d W(0,-1,0,   //HZ 9.13
 		      1,0,0,
 		      0,0,1);
-		Matx33d Winv(0,1,0,
-		     -1,0,0,
-		     0,0,1);
-		cv::Mat_<double> R = svd.u * Mat(W) * svd.vt; //HZ 9.19
-		cv::Mat_<double> t = svd.u.col(2); //u3
-		Matx34d P1 = Matx34d(R(0,0),    R(0,1), R(0,2), t(0),
-		         R(1,0),    R(1,1), R(1,2), t(1),
-		         R(2,0),    R(2,1), R(2,2), t(2));
+
+		cv::Mat_<double> R = svd.u * Mat(W).inv() * svd.vt; //HZ 9.19
+
+
+
+
+		std::cout << "R: " << (cv::Mat)R << std::endl;
+		//cv::Mat_<double> t = svd.u.col(2); //u3
+		Matx33d Z(0, -1, 0,
+				1, 0, 0,
+				0, 0, 0);
+		cv::Mat_<double> t = svd.vt.t() * Mat(Z) * svd.vt;
+		std::cout << "t: " << (cv::Mat)t << std::endl;
+
+		Vec3d tVec = Vec3d(t(1,2), t(2,0), t(0,1));
+
+		Matx34d P1 = Matx34d(R(0,0),    R(0,1), R(0,2), tVec(0),
+		         R(1,0),    R(1,1), R(1,2), tVec(1),
+		         R(2,0),    R(2,1), R(2,2), tVec(2));
+		ofMatrix4x4 ofR(R(0,0),    R(0,1), R(0,2), 0,
+		         R(1,0),    R(1,1), R(1,2), 0,
+		         R(2,0),    R(2,1), R(2,2), 0,
+		         0, 0, 0, 1);
+		ofRs.push_back(ofR);
 
 		cv::Matx34d P(1,0,0,0,
 					  0,1,0,0,
 					  0,0,1,0);
 		vector<Point3d> pointcloud;
-		TriangulatePoints(keyPoints1, keyPoints2, cameraMatrixInv,
+		/*TriangulatePoints(keyPoints1, keyPoints2, cameraMatrixInv,
 				calibration.getDistCoeffs(), P, P1, pointcloud,
 				   correspImg1Pt);
+*/
+		pointcloud.clear();
+		cv::Matx33d identity(1,0,0,0,1,0,0,0,1);
+		/*for (int y = 0; y < image1.height; y++) {
+			for (int x = 0; x < image1.width; x++) {
+				Vec3d vec(x, y, 0);
 
+				Point3d point1(vec.val[0], vec.val[1], vec.val[2]);
+				Vec3d result = (cv::Mat)((cv::Mat)R * (cv::Mat)vec);
+				result = Vec3d(result.val[0] + tVec(0)*image1.width,
+						result.val[1] + tVec(1)*image1.height,
+						result.val[2] + tVec(2)*image2.height);
+				Point3d point2 = result;
+
+
+				pointcloud.push_back(point1);
+				pointcloud.push_back(point2);
+			}
+		}*/
 		std::cout << "Pointcloud: " << pointcloud.size() << std::endl;
 		ofColor color;
 		if (images.size() == 2) {
@@ -190,21 +256,36 @@ void testApp::keyPressed  (int key){
 		{
 			color = ofColor::blue;
 		}
-		const ofImage& image = images[images.size() - 2];
-		for (int i = 0; i < pointcloud.size(); i++) {
+/*		for (int i = 0; i < pointcloud.size(); i++) {
 
 			const Point2f& point = points1[i];
-			mesh.addColor(image.getColor(point.x, point.y));
+			mesh.addColor(image1.getColor(point.x, point.y));
 			const Point3d& point3d = pointcloud[i];
 			ofVec3f vec(point3d.x, point3d.y, point3d.z);
 			mesh.addVertex(vec);
-		}
+		}*/
+		int i = 0;
+		mesh.clear();/*
+		for (int y = 0; y < image1.height; y++) {
+			for (int x = 0; x < image1.width; x++) {
+				mesh.addColor(image1.getColor(x,y));
+				const Point3d& point1 = pointcloud[i];
+				ofVec3f vec1(point1.x, point1.y, point1.z);
+				mesh.addVertex(vec1);
+
+				mesh.addColor(image2.getColor(x,y));
+				const Point3d& point2 = pointcloud[i+1];
+				ofVec3f vec2(point2.x, point2.y, point2.z);
+				mesh.addVertex(vec2);
+				i+=2;
+			}
+		}*/
 	}
 }
 
 //--------------------------------------------------------------
-void testApp::keyReleased(int key){ 
-	
+void testApp::keyReleased(int key){
+
 }
 
 //--------------------------------------------------------------
@@ -213,12 +294,16 @@ void testApp::mouseMoved(int x, int y ){
 
 //--------------------------------------------------------------
 void testApp::mouseDragged(int x, int y, int button){
-	
+
 }
 
 //--------------------------------------------------------------
 void testApp::mousePressed(int x, int y, int button){
-
+	if (button == 4) {
+		easycam.setDistance(easycam.getDistance() + 0.5);
+	} else if (button == 3) {
+		easycam.setDistance(easycam.getDistance() - 0.5);
+	}
 }
 
 //--------------------------------------------------------------

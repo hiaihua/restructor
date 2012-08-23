@@ -37,6 +37,7 @@ class testApp : public ofBaseApp{
 		ofPtr<ofxCv::Flow> initializePyrLK();
 		ofPtr<ofxCv::Flow> initializeFarneback();
 		ofMesh mesh;
+		std::vector<ofMatrix4x4> ofRs;
 		ofEasyCam easycam;
 		std::vector<cv::KeyPoint> correspImg1Pt;
 
