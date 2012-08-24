@@ -40,6 +40,7 @@ class testApp : public ofBaseApp{
 		std::vector<ofMatrix4x4> ofRs;
 		ofEasyCam easycam;
 		std::vector<cv::KeyPoint> correspImg1Pt;
+		float computedAvgErr;
 
 		std::vector<cv::KeyPoint> convertFrom(const std::vector<cv::Point2f>& points);
 		double TriangulatePoints(const vector<cv::KeyPoint>& pt_set1,
