@@ -105,11 +105,15 @@ std::vector<KeyPoint> testApp::convertFrom(const std::vector<Point2f>& points) {
 
 //--------------------------------------------------------------
 void testApp::keyPressed  (int key){
-	if (images.size() >= 4) {
+	if (images.size() >= 8) {
 		return;
 	}
 
 	if (key == 'm') {
+		return;
+	}
+
+	if (undistorted.height < 480 || undistorted.width < 640) {
 		return;
 	}
 
