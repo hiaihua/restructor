@@ -21,6 +21,11 @@ class testApp : public ofBaseApp{
 		void mouseReleased(int x, int y, int button);
 		void windowResized(int w, int h);
 
+		virtual void menuItemSelected(string menu_id_str);
+
+		void doRestruct();
+		void doCalibrate();
+
 		ofVideoGrabber cam;
 		ofImage undistorted;
 		ofImage prevUndistorted;
@@ -41,6 +46,14 @@ class testApp : public ofBaseApp{
 		ofEasyCam easycam;
 		std::vector<cv::KeyPoint> correspImg1Pt;
 		float computedAvgErr;
+		bool calibrating;
+		ofPixels previous;
+		ofPixels diff;
+
+		float diffMean;
+		float lastTime;
+
+		void doCalibrationUpdate();
 
 		std::vector<cv::KeyPoint> convertFrom(const std::vector<cv::Point2f>& points);
 		double TriangulatePoints(const vector<cv::KeyPoint>& pt_set1,

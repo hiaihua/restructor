@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import cc.openframeworks.OFAndroid;
 
@@ -63,7 +64,9 @@ public class OFActivity extends Activity{
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
     	// Create settings menu options from here, one by one or infalting an xml
-        return super.onCreateOptionsMenu(menu);
+    	MenuInflater inflater = getMenuInflater();
+    	inflater.inflate(R.menu.menu, menu);
+    	return true;
     }
     
     @Override

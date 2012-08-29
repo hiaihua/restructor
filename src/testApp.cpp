@@ -7,7 +7,9 @@ using namespace ofxCv;
 using namespace cv;
 using namespace std;
 
-#define TESTx
+const float diffThreshold = 2.5; // maximum amount of movement
+const float timeThreshold = 1; // minimum time between snapshots
+const int startCleaning = 10; // start cleaning outliers after this many samples
 
 //--------------------------------------------------------------
 void testApp::setup(){
@@ -18,8 +20,27 @@ void testApp::setup(){
 	//ofSetOrientation(OF_ORIENTATION_90_LEFT);
 	// TODO: go through calibration setups if xml does not exist
 	calibration.setFillFrame(true);
+
+	FileStorage settings(ofToDataPath("settings.yml"), FileStorage::READ);
+	if(settings.isOpened()) {
+		int xCount = settings["xCount"], yCount = settings["yCount"];
+		calibration.setPatternSize(xCount, yCount);
+		float squareSize = settings["squareSize"];
+		calibration.setSquareSize(squareSize);
+		CalibrationPattern patternType;
+		switch(settings["patternType"]) {
+			case 0: patternType = CHESSBOARD; break;
+			case 1: patternType = CIRCLES_GRID; break;
+			case 2: patternType = ASYMMETRIC_CIRCLES_GRID; break;
+		}
+		calibration.setPatternType(patternType);
+	}
+
 	calibration.load("calibration.yml");
+
 	imitate(undistorted, cam);
+	imitate(previous, cam);
+	imitate(diff, cam);
 
 	//flow = initializeFarneback();
 	flow = initializePyrLK();
@@ -34,6 +55,10 @@ void testApp::setup(){
 	easycam.setDistance(50);
 
 	computedAvgErr = 0;
+	calibrating = false;
+
+	diffMean = 0;
+	lastTime = 0;
 }
 
 ofPtr<ofxCv::Flow> testApp::initializePyrLK() {
@@ -63,23 +88,62 @@ ofPtr<ofxCv::Flow> testApp::initializeFarneback() {
 	return ofPtr<ofxCv::Flow>(flow);
 }
 
+void testApp::doCalibrationUpdate() {
+	Mat camMat = toCv(cam);
+	Mat prevMat = toCv(previous);
+	Mat diffMat = toCv(diff);
+
+	absdiff(prevMat, camMat, diffMat);
+	camMat.copyTo(prevMat);
+
+	diffMean = mean(Mat(mean(diffMat)))[0];
+
+	float curTime = ofGetElapsedTimef();
+	if(curTime - lastTime > timeThreshold && diffMean < diffThreshold) {
+		if(calibration.add(camMat)) {
+			cout << "re-calibrating" << endl;
+			calibration.calibrate();
+			if(calibration.size() > startCleaning) {
+				calibration.clean();
+			}
+			calibration.save("calibration.yml");
+			lastTime = curTime;
+		}
+	}
+
+	if(calibration.size() > 0) {
+		calibration.undistort(toCv(cam), toCv(undistorted));
+		undistorted.update();
+	}
+
+}
+
 //--------------------------------------------------------------
 void testApp::update(){
 	cam.update();
 	if (cam.isFrameNew()) {
 
-		calibration.undistort(toCv(cam), toCv(undistorted));
-		undistorted.update();
+		if (calibrating) {
+			doCalibrationUpdate();
+		}
+
+		if (calibration.size() > 0) {
+			calibration.undistort(toCv(cam), toCv(undistorted));
+			undistorted.update();
+		}
 	}
 }
 
 //--------------------------------------------------------------
 void testApp::draw(){
-	//undistorted.draw(0, 0);
+	cam.draw(0, 0);
 	ofPushStyle();
 	std::stringstream ss;
-	ss << "avg Err: " << computedAvgErr;
-	ofSetHexColor(0x000000);
+	ss << "avg Err: " << computedAvgErr << std::endl;
+	if (calibrating) {
+		ss << "calibrating..." << std::endl;
+	}
+	ofSetHexColor(0xffffff);
 	ofDrawBitmapString(ss.str(), 20, 20);
 	ofNoFill();
 	easycam.begin();
@@ -105,119 +169,11 @@ std::vector<KeyPoint> testApp::convertFrom(const std::vector<Point2f>& points) {
 
 //--------------------------------------------------------------
 void testApp::keyPressed  (int key){
-	if (images.size() >= 8) {
-		return;
+	if (key == 'x') {
+		doRestruct();
 	}
-
-	if (key == 'm') {
-		return;
-	}
-
-	if (undistorted.height < 480 || undistorted.width < 640) {
-		return;
-	}
-
-	ofImage image;
-	image.clone(undistorted);
-	images.push_back(image);
-
-	ofImage gray;
-	gray.clone(undistorted);
-	gray.setImageType(OF_IMAGE_GRAYSCALE);
-	grayImages.push_back(gray);
-
-
-	flow->calcOpticalFlow(image);
-
-	if (images.size() >= 2) {
-		const ofImage& image1 = images[images.size() - 2];
-		const ofImage& image2 = images[images.size() - 1];
-
-		std::vector<std::vector<cv::Point2f> > points;
-		points.push_back(flow->getPointsPrev());
-		points.push_back(flow->getPointsNext());
-
-
-		//points1.resize(400);
-		//points2.resize(400);
-
-		std::cout << "points1: " << points[0].size() << std::endl;
-		std::cout << "points2: " << points[1].size() << std::endl;
-
-
-		fundamentalMatrix = (cv::Mat)cv::findFundamentalMat(points[0], points[1]);
-		cv::Mat cameraMatrix = (cv::Mat)calibration.getDistortedIntrinsics().getCameraMatrix();
-		cv::Mat cameraMatrixInv = cameraMatrix.inv();
-		std::cout << "fund: " << fundamentalMatrix << std::endl;
-
-		std::vector<std::vector<Point3f> > lines(2);
-		cv::computeCorrespondEpilines(points[0], 1, fundamentalMatrix, lines[0]);
-		cv::computeCorrespondEpilines(points[1], 2, fundamentalMatrix, lines[1]);
-		double avgErr = 0;
-
-		for (int i = 0; i < points[0].size(); i++) {
-			double err = fabs(points[0][i].x*lines[1][i].x +
-					points[0][i].y*lines[1][i].y + lines[1][i].z)
-					+ fabs(points[1][i].x*lines[0][i].x +
-							points[1][i].y*lines[0][i].y + lines[0][i].z);
-						        avgErr += err;
-		}
-		computedAvgErr = avgErr/(points[0].size());
-
-#ifdef TEST
-		essentialMatrix = fundamentalMatrix;
-#else
-		essentialMatrix = cameraMatrix.t() * fundamentalMatrix * cameraMatrix;
-#endif
-		cv::SVD svd(essentialMatrix);
-		Matx33d W(0,-1,0,   //HZ 9.13
-		      1,0,0,
-		      0,0,1);
-
-		cv::Mat_<double> R = svd.u * Mat(W).inv() * svd.vt; //HZ 9.19
-
-
-
-
-		std::cout << "R: " << (cv::Mat)R << std::endl;
-		//cv::Mat_<double> t = svd.u.col(2); //u3
-		Matx33d Z(0, -1, 0,
-				1, 0, 0,
-				0, 0, 0);
-		cv::Mat_<double> t = svd.vt.t() * Mat(Z) * svd.vt;
-		std::cout << "t: " << (cv::Mat)t << std::endl;
-
-		Vec3d tVec = Vec3d(t(1,2), t(2,0), t(0,1));
-
-		Matx34d P1 = Matx34d(R(0,0),    R(0,1), R(0,2), tVec(0),
-		         R(1,0),    R(1,1), R(1,2), tVec(1),
-		         R(2,0),    R(2,1), R(2,2), tVec(2));
-		ofMatrix4x4 ofR(R(0,0),    R(0,1), R(0,2), 0,
-		         R(1,0),    R(1,1), R(1,2), 0,
-		         R(2,0),    R(2,1), R(2,2), 0,
-		         0, 0, 0, 1);
-		ofRs.push_back(ofR);
-
-		cv::Matx34d P(1,0,0,0,
-					  0,1,0,0,
-					  0,0,1,0);
-
-		for (int y = 0; y < image1.height; y += 10) {
-			for (int x = 0; x < image1.width; x += 10) {
-				Vec3d vec(x, y, 0);
-
-				Point3d point1(vec.val[0], vec.val[1], vec.val[2]);
-				Vec3d result = (cv::Mat)((cv::Mat)R * (cv::Mat)vec);
-				Point3d point2 = result;
-
-
-				mesh.addColor(image1.getColor(x, y));
-				mesh.addVertex(ofVec3f(point1.x, point1.y, point1.z));
-
-				mesh.addColor(image2.getColor(x, y));
-				mesh.addVertex(ofVec3f(point2.x, point2.y, point2.z));
-			}
-		}
+	else if (key == 'c') {
+		doCalibrate();
 	}
 }
 
@@ -461,4 +417,130 @@ double testApp::TriangulatePoints(const vector<KeyPoint>& pt_set1,
 #endif
 
 	return mse[0];
+}
+void testApp::menuItemSelected(string menu_id_str) {
+	if (menu_id_str == "calibrateOption") {
+		doCalibrate();
+	}
+	else if(menu_id_str == "restructOption") {
+		doRestruct();
+	}
+}
+
+void testApp::doCalibrate() {
+	calibrating = !calibrating;
+}
+
+void testApp::doRestruct() {
+	if (images.size() >= 8) {
+		return;
+	}
+
+	if (undistorted.height < 480 || undistorted.width < 640) {
+		return;
+	}
+
+	ofImage image;
+	image.clone(undistorted);
+	images.push_back(image);
+
+	ofImage gray;
+	gray.clone(undistorted);
+	gray.setImageType(OF_IMAGE_GRAYSCALE);
+	grayImages.push_back(gray);
+
+
+	flow->calcOpticalFlow(image);
+
+	if (images.size() >= 2) {
+		const ofImage& image1 = images[images.size() - 2];
+		const ofImage& image2 = images[images.size() - 1];
+
+		std::vector<std::vector<cv::Point2f> > points;
+		points.push_back(flow->getPointsPrev());
+		points.push_back(flow->getPointsNext());
+
+
+		//points1.resize(400);
+		//points2.resize(400);
+
+		std::cout << "points1: " << points[0].size() << std::endl;
+		std::cout << "points2: " << points[1].size() << std::endl;
+
+
+		fundamentalMatrix = (cv::Mat)cv::findFundamentalMat(points[0], points[1]);
+		cv::Mat cameraMatrix = (cv::Mat)calibration.getDistortedIntrinsics().getCameraMatrix();
+		cv::Mat cameraMatrixInv = cameraMatrix.inv();
+		std::cout << "fund: " << fundamentalMatrix << std::endl;
+
+		std::vector<std::vector<Point3f> > lines(2);
+		cv::computeCorrespondEpilines(points[0], 1, fundamentalMatrix, lines[0]);
+		cv::computeCorrespondEpilines(points[1], 2, fundamentalMatrix, lines[1]);
+		double avgErr = 0;
+
+		for (int i = 0; i < points[0].size(); i++) {
+			double err = fabs(points[0][i].x*lines[1][i].x +
+					points[0][i].y*lines[1][i].y + lines[1][i].z)
+					+ fabs(points[1][i].x*lines[0][i].x +
+							points[1][i].y*lines[0][i].y + lines[0][i].z);
+						        avgErr += err;
+		}
+		computedAvgErr = avgErr/(points[0].size());
+
+#ifdef TEST
+		essentialMatrix = fundamentalMatrix;
+#else
+		essentialMatrix = cameraMatrix.t() * fundamentalMatrix * cameraMatrix;
+#endif
+		cv::SVD svd(essentialMatrix);
+		Matx33d W(0,-1,0,   //HZ 9.13
+		      1,0,0,
+		      0,0,1);
+
+		cv::Mat_<double> R = svd.u * Mat(W).inv() * svd.vt; //HZ 9.19
+
+
+
+
+		std::cout << "R: " << (cv::Mat)R << std::endl;
+		//cv::Mat_<double> t = svd.u.col(2); //u3
+		Matx33d Z(0, -1, 0,
+				1, 0, 0,
+				0, 0, 0);
+		cv::Mat_<double> t = svd.vt.t() * Mat(Z) * svd.vt;
+		std::cout << "t: " << (cv::Mat)t << std::endl;
+
+		Vec3d tVec = Vec3d(t(1,2), t(2,0), t(0,1));
+
+		Matx34d P1 = Matx34d(R(0,0),    R(0,1), R(0,2), tVec(0),
+		         R(1,0),    R(1,1), R(1,2), tVec(1),
+		         R(2,0),    R(2,1), R(2,2), tVec(2));
+		ofMatrix4x4 ofR(R(0,0),    R(0,1), R(0,2), 0,
+		         R(1,0),    R(1,1), R(1,2), 0,
+		         R(2,0),    R(2,1), R(2,2), 0,
+		         0, 0, 0, 1);
+		ofRs.push_back(ofR);
+
+		cv::Matx34d P(1,0,0,0,
+					  0,1,0,0,
+					  0,0,1,0);
+
+		for (int y = 0; y < image1.height; y += 10) {
+			for (int x = 0; x < image1.width; x += 10) {
+				Vec3d vec(x, y, 0);
+
+				Point3d point1(vec.val[0], vec.val[1], vec.val[2]);
+				Vec3d result = (cv::Mat)((cv::Mat)R * (cv::Mat)vec);
+				Point3d point2 = result;
+
+
+				mesh.addColor(image1.getColor(x, y));
+				mesh.addVertex(ofVec3f(point1.x, point1.y, point1.z));
+
+				mesh.addColor(image2.getColor(x, y));
+				mesh.addVertex(ofVec3f(point2.x, point2.y, point2.z));
+			}
+		}
+	}
+
 }
