@@ -4,9 +4,12 @@
 
 #include "ofMain.h"
 #include "ofxCv.h"
-
-class testApp : public ofBaseApp{
-	
+#ifdef TARGET_ANDROID
+#include "ofxAndroidApp.h"
+class testApp : public ofxAndroidApp {
+#else
+class testApp : public ofBaseApp {
+#endif
 	public:
 		
 		void setup();
@@ -21,10 +24,11 @@ class testApp : public ofBaseApp{
 		void mouseReleased(int x, int y, int button);
 		void windowResized(int w, int h);
 
-		virtual void menuItemSelected(string menu_id_str);
+		virtual bool menuItemSelected(string menu_id_str);
 
 		void doRestruct();
 		void doCalibrate();
+		void addPicture();
 
 		ofVideoGrabber cam;
 		ofImage undistorted;
@@ -49,6 +53,9 @@ class testApp : public ofBaseApp{
 		bool calibrating;
 		ofPixels previous;
 		ofPixels diff;
+
+		cv::Mat_<double> R;
+		cv::SVD svd;
 
 		float diffMean;
 		float lastTime;

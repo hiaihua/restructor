@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android" ><item
+        android:id="@+id/calibrateOption"
+        android:title="Calibrate">
+    </item>
+    <item
+        android:id="@+id/restructOption"
+        android:title="Restruct!">
+    </item>
+    <item android:id="@+id/clearOption"
+        android:title="Clean"></item>
+    <item android:id="@+id/takePictureOption"
+        android:title="Take picture"></item>
+</menu>

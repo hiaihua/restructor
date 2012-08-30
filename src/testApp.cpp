@@ -136,7 +136,6 @@ void testApp::update(){
 
 //--------------------------------------------------------------
 void testApp::draw(){
-	cam.draw(0, 0);
 	ofPushStyle();
 	std::stringstream ss;
 	ss << "avg Err: " << computedAvgErr << std::endl;
@@ -149,6 +148,7 @@ void testApp::draw(){
 	easycam.begin();
 	ofRect(0, 0, 3, 3);
 	ofScale(0.1, 0.1, 0.1);
+	cam.draw(0, 0);
 
 	mesh.draw();
 	easycam.end();
@@ -174,6 +174,9 @@ void testApp::keyPressed  (int key){
 	}
 	else if (key == 'c') {
 		doCalibrate();
+	}
+	else if (key == 't') {
+		addPicture();
 	}
 }
 
@@ -418,13 +421,21 @@ double testApp::TriangulatePoints(const vector<KeyPoint>& pt_set1,
 
 	return mse[0];
 }
-void testApp::menuItemSelected(string menu_id_str) {
+bool testApp::menuItemSelected(string menu_id_str) {
 	if (menu_id_str == "calibrateOption") {
 		doCalibrate();
 	}
 	else if(menu_id_str == "restructOption") {
 		doRestruct();
 	}
+	else if (menu_id_str == "clearOption") {
+		images.clear();
+		mesh.clear();
+	}
+	else if (menu_id_str == "takePictureOption") {
+		addPicture();
+	}
+	return true;
 }
 
 void testApp::doCalibrate() {
@@ -432,6 +443,45 @@ void testApp::doCalibrate() {
 }
 
 void testApp::doRestruct() {
+	std::vector<std::vector<cv::Point2f> > points;
+	points.push_back(flow->getPointsPrev());
+	points.push_back(flow->getPointsNext());
+
+	cv::Mat k = (cv::Mat)calibration.getDistortedIntrinsics().getCameraMatrix();
+	cv::Mat distCoeffs = calibration.getDistCoeffs();
+
+	std::cout << "R: " << (cv::Mat)R << std::endl;
+	//cv::Mat_<double> t = svd.u.col(2); //u3
+	Matx33d Z(0, -1, 0,
+			1, 0, 0,
+			0, 0, 0);
+	cv::Mat_<double> t = svd.vt.t() * Mat(Z) * svd.vt;
+	std::cout << "t: " << (cv::Mat)t << std::endl;
+
+	Vec3d tVec = Vec3d(t(1,2), t(2,0), t(0,1));
+
+	Matx34d P = Matx34d(1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 1, 0);
+	Matx34d P1 = Matx34d(R(0,0),    R(0,1), R(0,2), tVec(0),
+			R(1,0),    R(1,1), R(1,2), tVec(1),
+			R(2,0),    R(2,1), R(2,2), tVec(2));
+
+	vector<Point3d> pointcloud;
+	TriangulatePoints(convertFrom(points[0]), convertFrom(points[1]), k.inv(),
+			distCoeffs, P, P1, pointcloud, correspImg1Pt);
+
+	mesh.clear();
+
+	for (int i = 0; i < pointcloud.size(); i++) {
+		const Point3d& point = pointcloud[i];
+		ofVec3f vec(point.x, point.y, point.z);
+		mesh.addColor(ofColor::blue);
+		mesh.addVertex(vec);
+	}
+}
+
+void testApp::addPicture() {
 	if (images.size() >= 8) {
 		return;
 	}
@@ -461,13 +511,6 @@ void testApp::doRestruct() {
 		points.push_back(flow->getPointsNext());
 
 
-		//points1.resize(400);
-		//points2.resize(400);
-
-		std::cout << "points1: " << points[0].size() << std::endl;
-		std::cout << "points2: " << points[1].size() << std::endl;
-
-
 		fundamentalMatrix = (cv::Mat)cv::findFundamentalMat(points[0], points[1]);
 		cv::Mat cameraMatrix = (cv::Mat)calibration.getDistortedIntrinsics().getCameraMatrix();
 		cv::Mat cameraMatrixInv = cameraMatrix.inv();
@@ -487,43 +530,16 @@ void testApp::doRestruct() {
 		}
 		computedAvgErr = avgErr/(points[0].size());
 
-#ifdef TEST
-		essentialMatrix = fundamentalMatrix;
-#else
-		essentialMatrix = cameraMatrix.t() * fundamentalMatrix * cameraMatrix;
-#endif
-		cv::SVD svd(essentialMatrix);
-		Matx33d W(0,-1,0,   //HZ 9.13
-		      1,0,0,
-		      0,0,1);
-
-		cv::Mat_<double> R = svd.u * Mat(W).inv() * svd.vt; //HZ 9.19
-
-
-
-
-		std::cout << "R: " << (cv::Mat)R << std::endl;
-		//cv::Mat_<double> t = svd.u.col(2); //u3
-		Matx33d Z(0, -1, 0,
+		svd = cv::SVD(essentialMatrix);
+		Matx33d W(0, -1, 0,
 				1, 0, 0,
-				0, 0, 0);
-		cv::Mat_<double> t = svd.vt.t() * Mat(Z) * svd.vt;
-		std::cout << "t: " << (cv::Mat)t << std::endl;
+				0, 0, 1);
+		R = svd.u * Mat(W).inv() * svd.vt; //HZ 9.19
 
-		Vec3d tVec = Vec3d(t(1,2), t(2,0), t(0,1));
 
-		Matx34d P1 = Matx34d(R(0,0),    R(0,1), R(0,2), tVec(0),
-		         R(1,0),    R(1,1), R(1,2), tVec(1),
-		         R(2,0),    R(2,1), R(2,2), tVec(2));
-		ofMatrix4x4 ofR(R(0,0),    R(0,1), R(0,2), 0,
-		         R(1,0),    R(1,1), R(1,2), 0,
-		         R(2,0),    R(2,1), R(2,2), 0,
-		         0, 0, 0, 1);
-		ofRs.push_back(ofR);
 
-		cv::Matx34d P(1,0,0,0,
-					  0,1,0,0,
-					  0,0,1,0);
+
+
 
 		for (int y = 0; y < image1.height; y += 10) {
 			for (int x = 0; x < image1.width; x += 10) {
